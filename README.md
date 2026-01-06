@@ -1,7 +1,15 @@
-# Tauri + Vue + TypeScript
+# syt
 
-This template should help get you started developing with Vue 3 and TypeScript in Vite. The template uses Vue 3 `<script setup>` SFCs, check out the [script setup docs](https://v3.vuejs.org/api/sfc-script-setup.html#sfc-script-setup) to learn more.
+yt-dlpをGUIで使えるようにするアプリケーション
 
-## Recommended IDE Setup
+## 現状
 
-- [VS Code](https://code.visualstudio.com/) + [Vue - Official](https://marketplace.visualstudio.com/items?itemName=Vue.volar) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
+- [x] 基本機能の最低限の実装
+- [ ] 使いやすいUIの構築
+- [ ] 基本機能の充実
+- [ ] 高度な機能の実装
+
+## 開発環境
+
+- MacBook Air (macOS Sequoia 15.7.2)
+- Google Antigravity or Visual Studio Code
