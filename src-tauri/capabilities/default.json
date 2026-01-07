@@ -36,6 +36,7 @@
         }
       ]
     },
-    "store:default"
+    "store:default",
+    "os:default"
   ]
 }
