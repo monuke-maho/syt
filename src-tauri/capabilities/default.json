@@ -15,8 +15,8 @@
       "identifier": "shell:allow-execute",
       "allow": [
         {
-          "name": "yt-dlp",
-          "cmd": "yt-dlp",
+          "name": "binaries/yt-dlp",
+          "sidecar": true,
           "args": true
         },
         {
@@ -30,13 +30,14 @@
       "identifier": "shell:allow-spawn",
       "allow": [
         {
-          "name": "yt-dlp",
-          "cmd": "yt-dlp",
+          "name": "binaries/yt-dlp",
+          "sidecar": true,
           "args": true
         }
       ]
     },
     "store:default",
-    "os:default"
+    "os:default",
+    "shell:allow-kill"
   ]
 }

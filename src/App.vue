@@ -24,6 +24,15 @@ onMounted(async () => {
   try {
     savePath.value = await homeDir();
     console.log(savePath.value)
+    const updateYTDLP = Command.sidecar('binaries/yt-dlp', ['-U'])
+    await updateYTDLP.spawn()
+    updateYTDLP.on('close', (data) => {
+      console.log('yt-dlp update process closed with code:', data.code)
+    })
+    updateYTDLP.stdout.on('data', (line: string) => {
+      console.log('[UPDATE]', line.trim())
+      downloadLog.value.push('[INIT] ' + line.trim())
+    })
   } catch (err) {
     console.error('Error:', err)
   }
@@ -54,7 +63,7 @@ const downloadVideo = async () => {
   downloadTitle.value = ''
   const progress_template = '[DOWNLOADING]::%(progress._percent)s::%(info.title)s'
   const encoding = (await currentOS) === 'windows' ? 'shift_jis' : 'utf-8'
-  const cmd = Command.create('yt-dlp', ['--no-color', '--newline', videoUrl.value, '-o', savePath.value + '/%(title)s.%(ext)s', '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best', '--merge-output-format', 'mp4', '--progress-template', progress_template], { encoding: encoding })
+  const cmd = Command.sidecar('binaries/yt-dlp', ['--no-color', '--newline', videoUrl.value, '-o', savePath.value + '/%(title)s.%(ext)s', '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best', '--merge-output-format', 'mp4', '--progress-template', progress_template], { encoding: encoding })
   cmd.stdout.on('data', (line: string) => {
     if (line.startsWith('[DOWNLOADING]')) {
       const parts = line.trim().split('::')
@@ -72,7 +81,6 @@ const downloadVideo = async () => {
   cmd.stderr.on('data', (line: string) => {
     console.error(line.trim())
   })
-  
   await cmd.spawn()
   cmd.on('close', (data) => {
     downloading.value = false
