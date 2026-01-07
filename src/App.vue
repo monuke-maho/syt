@@ -1,13 +1,22 @@
 <script setup lang="ts">
-  import { ref, onMounted } from 'vue';
+  import { ref, onMounted, nextTick, watch } from 'vue';
   import { open } from '@tauri-apps/plugin-dialog';
   import { homeDir } from '@tauri-apps/api/path';
   import { Command } from '@tauri-apps/plugin-shell';
   const savePath = ref<string | null>(null);
+  const logArea = ref(null);
   const videoUrl = ref('');
   const downloadProgress = ref(0)
   const downloadTitle = ref('')
   const downloading = ref(false)
+  const downloadLog = ref<string[]>([])
+
+  watch(downloadLog, async () => {
+    await nextTick();
+    if (logArea.value) {
+      logArea.value.scrollTop = logArea.value.scrollHeight;
+    }
+  }, { deep: true })
 
   onMounted(async () => {
     try {
@@ -56,7 +65,7 @@
           }
         }
       } else {
-        console.log(line.trim())
+        downloadLog.value.push(line.trim())
       }
     })
     await cmd.spawn()
@@ -81,12 +90,15 @@
       </div>
       <div class="flex flex-row items-center w-full gap-2">
         <input type="text" name="url" id="url" readonly placeholder="保存先" v-model="savePath" class="p-2 border border-gray-300 rounded-sm w-full">
-        <button class="p-2 rounded-sm bg-blue-500 text-white cursor-pointer flex flex-row items-center gap-2 w-fit" @click="selectSaveDir"><span class="material-icons">folder</span> Select</button>
+        <a class="p-2 whitespace-nowrap font-bold rounded-sm bg-blue-500 text-white cursor-pointer flex flex-row items-center gap-2" @click="selectSaveDir"><span class="material-icons">folder</span> 保存先を選択</a>
       </div>
       <div class="flex flex-row items-center w-full gap-2">
         <div class="w-full h-2 bg-gray-200 rounded-full">
           <div class="h-full bg-blue-500 rounded-full transition-all duration-75" :style="{ width: `${downloadProgress}%` }"></div>
         </div>
+      </div>
+      <div class="w-full h-40 overflow-y-auto border border-gray-200 rounded-sm p-2" ref="logArea">
+        <p class="text-sm font-mono" v-for="log in downloadLog" :key="log">{{ log }}</p>
       </div>
     </div>
     <div class="absolute bottom-4 right-4">
