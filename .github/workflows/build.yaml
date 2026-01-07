@@ -49,7 +49,7 @@ jobs:
               with:
                 tagName: ${{ inputs.version }}
                 releaseName: ${{ inputs.version }}
-                releaseNotes: ''
+                releaseBody: ''
                 releaseDraft: true
                 prerelease: false
                 args: ${{ matrix.args }}
