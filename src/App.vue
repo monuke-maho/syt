@@ -38,6 +38,7 @@
   }
 
   const downloadVideo = async () => {
+    downloadProgress.value = 0
     downloading.value = true
     downloadTitle.value = ''
     const progress_template = '[DOWNLOADING]::%(progress._percent)s::%(info.title)s'
@@ -59,26 +60,37 @@
       }
     })
     await cmd.spawn()
-    cmd.on('close', () => {
+    cmd.on('close', (data) => {
       downloading.value = false
       downloadTitle.value = ''
-      downloadProgress.value = 0
+      if (data.code === 0) {
+        downloadProgress.value = 100
+      } else if (data.code === 1) {
+        downloadProgress.value = 0
+      }
     })
   }
 </script>
 
 <template>
-  <main class="p-6 h-screen min-h-screen">
-    <h1 class="text-2xl font-bold">syt</h1>
-    <div class="container flex flex-col items-start gap-4 mt-2 w-full">
+  <main class="p-6 h-screen min-h-screen relative">
+    <h1 class="text-2xl font-bold">Syt</h1>
+    <div class="flex flex-col items-start gap-2 mt-4 w-full">
       <div class="flex flex-row items-center w-full gap-2">
         <input type="text" name="url" id="url" placeholder="URLを入力..." v-model="videoUrl" class="p-2 border border-gray-300 rounded-sm w-full">
-        <button :class="downloading ? 'p-2 rounded-sm bg-gray-500 cursor-not-allowed' : 'p-2 rounded-sm bg-blue-500 text-white cursor-pointer'" @click="downloadVideo">{{ downloading ? `Downloading...` : `Download` }}</button>
       </div>
       <div class="flex flex-row items-center w-full gap-2">
         <input type="text" name="url" id="url" readonly placeholder="保存先" v-model="savePath" class="p-2 border border-gray-300 rounded-sm w-full">
-        <button class="p-2 rounded-sm bg-blue-500 text-white cursor-pointer" @click="selectSaveDir">選択</button>
+        <button class="p-2 rounded-sm bg-blue-500 text-white cursor-pointer flex flex-row items-center gap-2 w-fit" @click="selectSaveDir"><span class="material-icons">folder</span> Select</button>
       </div>
+      <div class="flex flex-row items-center w-full gap-2">
+        <div class="w-full h-2 bg-gray-200 rounded-full">
+          <div class="h-full bg-blue-500 rounded-full transition-all duration-75" :style="{ width: `${downloadProgress}%` }"></div>
+        </div>
+      </div>
+    </div>
+    <div class="absolute bottom-4 right-4">
+      <button class="flex flex-row items-center gap-2 w-fit transition-all duration-300" :class="downloading ? 'p-2 rounded-sm bg-gray-500 cursor-not-allowed' : 'p-2 rounded-sm bg-blue-500 text-white cursor-pointer'" @click="downloadVideo"><span class="material-icons">{{ downloading ? 'hourglass_empty' : 'download' }}</span> {{ downloading ? `Downloading...` : `Download` }}</button>
     </div>
   </main>
 </template>

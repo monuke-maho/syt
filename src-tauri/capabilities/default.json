@@ -35,6 +35,7 @@
           "args": true
         }
       ]
-    }
+    },
+    "store:default"
   ]
 }
