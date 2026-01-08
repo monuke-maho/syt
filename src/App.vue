@@ -67,7 +67,11 @@ const downloadVideo = async () => {
   downloadErrors.value = []
   const progress_template = '[DOWNLOADING]::%(progress._percent)s::%(info.title)s'
   const encoding = (await currentOS) === 'windows' ? 'shift_jis' : 'utf-8'
-  const cmd = Command.sidecar('binaries/yt-dlp', ['--no-color', '--newline', videoUrl.value, '-o', savePath.value + '/%(title)s.%(ext)s', '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best', '--merge-output-format', 'mp4', '--progress-template', progress_template], { encoding: encoding })
+  let env: Record<string, string> = {}
+  if (await currentOS === 'macos') {
+    env['PATH'] = '/opt/homebrew/bin:/usr/local/bin:'
+  }
+  const cmd = Command.sidecar('binaries/yt-dlp', ['--no-color', '--newline', videoUrl.value, '-o', savePath.value + '/%(title)s.%(ext)s', '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best', '--merge-output-format', 'mp4', '--progress-template', progress_template], { encoding: encoding, env: env })
   cmd.stdout.on('data', (line: string) => {
     if (line.startsWith('[DOWNLOADING]')) {
       const parts = line.trim().split('::')
