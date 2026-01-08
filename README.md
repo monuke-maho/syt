@@ -1,5 +1,7 @@
 # syt
 
+<img width="1172" height="727" alt="image" src="https://github.com/user-attachments/assets/befcd9b6-e6b3-4bf6-abc3-53ba6d1bb1bf" />
+
 yt-dlpをGUIで使えるようにするアプリケーション
 
 ## 現状
