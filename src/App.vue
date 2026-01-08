@@ -1,19 +1,52 @@
 <script setup lang="ts">
-import { ref, onMounted, nextTick, watch } from 'vue';
+// import
+import { ref, onMounted, nextTick, watch, computed } from 'vue';
 import { open } from '@tauri-apps/plugin-dialog';
 import { homeDir } from '@tauri-apps/api/path';
 import { Command } from '@tauri-apps/plugin-shell';
 import { platform } from '@tauri-apps/plugin-os';
-const savePath = ref<string | null>(null);
+
+import { Button } from './components/ui/button';
+import { Input } from './components/ui/input';
+import { Progress } from './components/ui/progress';
+import { Switch } from './components/ui/switch';
+import { Label } from './components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectLabel } from './components/ui/select';
+
+interface QualityItem {
+  label: string;
+  value: string;
+}
+
+// いろいろ準備するやつ
+const savePath = ref<string>('');
 const logArea = ref<HTMLElement | null>(null);
 const videoUrl = ref('');
-const downloadProgress = ref(0)
+const downloadProgress = ref<number | null>(0);
 const downloadTitle = ref('')
 const downloading = ref(false)
 const downloadLog = ref<string[]>([])
 const downloadErrors = ref<string[]>([])
 const currentOS = platform()
+const playlistMode = ref(false)
+const namedIndex = ref(false)
+const exts = ref<string[]>(['mp4', 'mkv', 'mp3', 'flac', 'wav'])
+const selectedExt = ref<string>('mp4')
+const videoQualitys = ref<QualityItem[]>([{ label: '自動', value: 'auto' }, { label: '4K', value: '2160' }, { label: '2K', value: '1440' }, { label: '1080p', value: '1080' }, { label: '720p', value: '720' }])
+const mp3Qualitys = ref<QualityItem[]>([{ label: '自動', value: 'auto' }, { label: '320Kbps', value: '320' }, { label: '256Kbps', value: '256' }, { label: '192Kbps', value: '192' }, { label: '128Kbps', value: '128' }])
+const selectedQuality = ref<string>('auto')
 
+const qualityOptions = computed<QualityItem[]>(() => {
+  if (['mp3'].includes(selectedExt.value)) {
+    return mp3Qualitys.value
+  } else if (['mp4', 'mkv'].includes(selectedExt.value)) {
+    return videoQualitys.value
+  } else {
+    return []
+  }
+})
+
+// ログの自動スクロール
 watch(downloadLog, async () => {
   await nextTick();
   if (logArea.value) {
@@ -21,6 +54,7 @@ watch(downloadLog, async () => {
   }
 }, { deep: true })
 
+// 起動時の処理
 onMounted(async () => {
   try {
     savePath.value = await homeDir();
@@ -40,6 +74,7 @@ onMounted(async () => {
   }
 })
 
+// 保存先選択処理
 const selectSaveDir = async () => {
   if (!savePath.value) {
     savePath.value = await homeDir();
@@ -59,7 +94,13 @@ const selectSaveDir = async () => {
   }
 }
 
+// ダウンロード処理
 const downloadVideo = async () => {
+  if (!videoUrl.value) {
+    downloadLog.value.push('[❌️] URLが入力されていません')
+    return
+  }
+
   downloadLog.value.push('[⬇️] ダウンロードを開始します...')
   downloadProgress.value = 0
   downloading.value = true
@@ -71,7 +112,40 @@ const downloadVideo = async () => {
   if (await currentOS === 'macos') {
     env['PATH'] = '/opt/homebrew/bin:/usr/local/bin:'
   }
-  const cmd = Command.sidecar('binaries/yt-dlp', ['--no-color', '--newline', videoUrl.value, '-o', savePath.value + '/%(title)s.%(ext)s', '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best', '--merge-output-format', 'mp4', '--progress-template', progress_template], { encoding: encoding, env: env })
+  const ytdlopts = ['--newline', '--no-color', '--progress-template', progress_template]
+  if (['mp4', 'mkv'].includes(selectedExt.value)) {
+    if (selectedQuality.value === 'auto') {
+      ytdlopts.push('-f', 'bestvideo+bestaudio[ext=m4a]/best')
+    } else if (selectedQuality.value) {
+      ytdlopts.push('-f', `bestvideo[height<=?${selectedQuality.value}]+bestaudio[ext=m4a]/best[height<=?${selectedQuality.value}]`)
+    } else {
+      ytdlopts.push('-f', 'bestvideo+bestaudio[ext=m4a]/best')
+    }
+    ytdlopts.push('--merge-output-format', selectedExt.value)
+  } else if (selectedExt.value === 'mp3') {
+    ytdlopts.push('-f', 'bestaudio/best','-x', '--audio-format', 'mp3')
+    if (selectedQuality.value && selectedQuality.value !== 'auto') {
+      ytdlopts.push('--audio-quality', selectedQuality.value)
+    } else {
+      ytdlopts.push('--audio-quality', '0')
+    }
+  } else if (selectedExt.value === 'flac') {
+    ytdlopts.push('-f', 'bestaudio/best','-x', '--audio-format', 'flac')
+  } else if (selectedExt.value === 'wav') {
+    ytdlopts.push('-f', 'bestaudio/best','-x', '--audio-format', 'wav')
+  }
+  if (playlistMode.value) {
+    if (namedIndex.value) {
+      ytdlopts.push('-o', savePath.value + '/%(playlist_title)s/%(playlist_index)s - %(title)s.%(ext)s')
+    } else {
+      ytdlopts.push('-o', savePath.value + '/%(playlist_title)s/%(title)s.%(ext)s')
+    }
+  } else {
+    ytdlopts.push('-o', savePath.value + '/%(title)s.%(ext)s')
+  }
+  ytdlopts.push(videoUrl.value)
+  console.log('yt-dlp options:', ytdlopts)
+  const cmd = Command.sidecar('binaries/yt-dlp', ytdlopts, { encoding: encoding, env: env })
   cmd.stdout.on('data', (line: string) => {
     if (line.startsWith('[DOWNLOADING]')) {
       const parts = line.trim().split('::')
@@ -84,6 +158,7 @@ const downloadVideo = async () => {
       }
     } else {
       downloadLog.value.push(line.trim())
+      downloadProgress.value = null
     }
   })
   cmd.stderr.on('data', (line: string) => {
@@ -112,30 +187,61 @@ const downloadVideo = async () => {
     <h1 class="text-2xl font-bold">Syt</h1>
     <div class="flex flex-col items-start gap-2 mt-4 w-full">
       <div class="flex flex-row items-center w-full gap-2">
-        <input type="text" name="url" id="url" placeholder="URLを入力..." v-model="videoUrl"
-          class="p-2 border border-gray-300 rounded-sm w-full">
+        <Input v-model="videoUrl" type="text" placeholder="URLを入力..." />
       </div>
       <div class="flex flex-row items-center w-full gap-2">
-        <input type="text" name="url" id="url" readonly placeholder="保存先" v-model="savePath"
-          class="p-2 border border-gray-300 rounded-sm w-full">
-        <a class="p-2 whitespace-nowrap font-bold rounded-sm bg-blue-500 text-white cursor-pointer flex flex-row items-center gap-2"
-          @click="selectSaveDir"><span class="material-icons">folder</span> 保存先を選択</a>
+        <Input v-model="savePath" type="text" placeholder="保存先" readonly />
+        <Button @click="selectSaveDir"><span class="material-icons">folder</span>保存先を選択</Button>
       </div>
-      <div class="flex flex-row items-center w-full gap-2">
-        <div class="w-full h-2 bg-gray-200 rounded-full">
-          <div class="h-full bg-blue-500 rounded-full transition-all duration-75"
-            :style="{ width: `${downloadProgress}%` }"></div>
+      <h2 class="text-lg font-bold">オプション</h2>
+      <div class="flex flex-col sm:flex-row items-center w-full gap-2">
+        <div class="flex flex-row items-center w-full">
+          <Label for="extSelect" class="whitespace-nowrap mr-2">拡張子</Label>
+          <Select v-model="selectedExt" class="w-32" id="extSelect">
+            <SelectTrigger class="w-full">
+              <SelectValue placeholder="拡張子を選択" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectLabel>拡張子を選択</SelectLabel>
+              <SelectItem v-for="ext in exts" :value="ext" :key="ext">{{ ext }}</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
+        <div class="flex flex-row items-center w-full">
+          <Label for="qualitySelect" class="whitespace-nowrap mr-2">品質</Label>
+          <Select v-model="selectedQuality" class="w-32" id="qualitySelect">
+            <SelectTrigger class="w-full">
+              <SelectValue placeholder="品質を選択" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectLabel>{{ selectedExt === 'mp3' ? '音質を選択' : '画質を選択' }}</SelectLabel>
+              <SelectItem v-for="quality in qualityOptions" :value="quality.value" :key="quality.value">{{ quality.label }}</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+      <div class="flex flex-col sm:flex-row items-start sm:items-center w-full gap-2">
+        <div class="flex flex-row gap-2">
+          <Switch v-model="playlistMode" id="playlistSwitch" />
+          <Label for="playlistSwitch">プレイリストモード</Label>
+        </div>
+        <div class="flex flex-row gap-2">
+          <Switch :disabled="!playlistMode" v-model="namedIndex" id="namedIndexSwitch" />
+          <Label for="namedIndexSwitch">インデックスをファイル名に追加する</Label>
+        </div>
+
+      </div>
+      <h2 class="text-lg font-bold">ログ</h2>
+      <div class="flex flex-row items-center w-full gap-2">
+        <Progress :model-value="downloadProgress" class="w-full" />
       </div>
       <div class="w-full h-40 overflow-y-auto border border-gray-200 rounded-sm p-2" ref="logArea">
         <p class="text-sm font-mono" v-for="log in downloadLog" :key="log">{{ log }}</p>
       </div>
     </div>
     <div class="absolute bottom-4 right-4">
-      <button class="flex flex-row items-center gap-2 w-fit transition-all duration-300"
-        :class="downloading ? 'p-2 rounded-sm bg-gray-500 cursor-not-allowed' : 'p-2 rounded-sm bg-blue-500 text-white cursor-pointer'"
-        @click="downloadVideo"><span class="material-icons">{{ downloading ? 'hourglass_empty' : 'download' }}</span> {{
-          downloading ? `ダウンロード中...` : `ダウンロード` }}</button>
+      <Button :disabled="downloading" @click="downloadVideo"><span
+          class="material-icons">cloud_download</span>ダウンロード開始</Button>
     </div>
   </main>
 </template>
