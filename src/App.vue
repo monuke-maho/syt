@@ -11,6 +11,7 @@ const downloadProgress = ref(0)
 const downloadTitle = ref('')
 const downloading = ref(false)
 const downloadLog = ref<string[]>([])
+const downloadErrors = ref<string[]>([])
 const currentOS = platform()
 
 watch(downloadLog, async () => {
@@ -24,6 +25,7 @@ onMounted(async () => {
   try {
     savePath.value = await homeDir();
     console.log(savePath.value)
+    downloadLog.value.push('[🚀] yt-dlpの更新を確認しています...')
     const updateYTDLP = Command.sidecar('binaries/yt-dlp', ['-U'])
     await updateYTDLP.spawn()
     updateYTDLP.on('close', (data) => {
@@ -31,7 +33,7 @@ onMounted(async () => {
     })
     updateYTDLP.stdout.on('data', (line: string) => {
       console.log('[UPDATE]', line.trim())
-      downloadLog.value.push('[INIT] ' + line.trim())
+      downloadLog.value.push('[🚀] ' + line.trim())
     })
   } catch (err) {
     console.error('Error:', err)
@@ -58,9 +60,11 @@ const selectSaveDir = async () => {
 }
 
 const downloadVideo = async () => {
+  downloadLog.value.push('[⬇️] ダウンロードを開始します...')
   downloadProgress.value = 0
   downloading.value = true
   downloadTitle.value = ''
+  downloadErrors.value = []
   const progress_template = '[DOWNLOADING]::%(progress._percent)s::%(info.title)s'
   const encoding = (await currentOS) === 'windows' ? 'shift_jis' : 'utf-8'
   const cmd = Command.sidecar('binaries/yt-dlp', ['--no-color', '--newline', videoUrl.value, '-o', savePath.value + '/%(title)s.%(ext)s', '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best', '--merge-output-format', 'mp4', '--progress-template', progress_template], { encoding: encoding })
@@ -79,7 +83,7 @@ const downloadVideo = async () => {
     }
   })
   cmd.stderr.on('data', (line: string) => {
-    console.error(line.trim())
+    downloadErrors.value.push(line.trim())
   })
   await cmd.spawn()
   cmd.on('close', (data) => {
@@ -87,8 +91,13 @@ const downloadVideo = async () => {
     downloadTitle.value = ''
     if (data.code === 0) {
       downloadProgress.value = 100
+      downloadLog.value.push('[✅] ダウンロードが完了しました！')
     } else if (data.code === 1) {
       downloadProgress.value = 0
+      downloadLog.value.push('[❌] ダウンロード中にエラーが発生しました。')
+      downloadErrors.value.forEach((err) => {
+        downloadLog.value.push('[ERROR] ' + err)
+      })
     }
   })
 }
@@ -122,7 +131,7 @@ const downloadVideo = async () => {
       <button class="flex flex-row items-center gap-2 w-fit transition-all duration-300"
         :class="downloading ? 'p-2 rounded-sm bg-gray-500 cursor-not-allowed' : 'p-2 rounded-sm bg-blue-500 text-white cursor-pointer'"
         @click="downloadVideo"><span class="material-icons">{{ downloading ? 'hourglass_empty' : 'download' }}</span> {{
-          downloading ? `Downloading...` : `Download` }}</button>
+          downloading ? `ダウンロード中...` : `ダウンロード` }}</button>
     </div>
   </main>
 </template>
