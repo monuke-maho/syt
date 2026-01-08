@@ -1,10 +1,11 @@
 <script setup lang="ts">
 // import
-import { ref, onMounted, nextTick, watch, computed } from 'vue';
+import { ref, reactive, onMounted, nextTick, watch, computed } from 'vue';
 import { open } from '@tauri-apps/plugin-dialog';
 import { homeDir } from '@tauri-apps/api/path';
 import { Command } from '@tauri-apps/plugin-shell';
 import { platform } from '@tauri-apps/plugin-os';
+import { LazyStore } from '@tauri-apps/plugin-store';
 
 import { Button } from './components/ui/button';
 import { Input } from './components/ui/input';
@@ -18,33 +19,75 @@ interface QualityItem {
   value: string;
 }
 
-// いろいろ準備するやつ
-const savePath = ref<string>('');
-const logArea = ref<HTMLElement | null>(null);
-const videoUrl = ref('');
-const downloadProgress = ref<number | null>(0);
-const downloadTitle = ref('')
-const downloading = ref(false)
-const downloadLog = ref<string[]>([])
-const downloadErrors = ref<string[]>([])
-const currentOS = platform()
-const playlistMode = ref(false)
-const namedIndex = ref(false)
-const exts = ref<string[]>(['mp4', 'mkv', 'mp3', 'flac', 'wav'])
-const selectedExt = ref<string>('mp4')
-const videoQualitys = ref<QualityItem[]>([{ label: '自動', value: 'auto' }, { label: '4K', value: '2160' }, { label: '2K', value: '1440' }, { label: '1080p', value: '1080' }, { label: '720p', value: '720' }])
-const mp3Qualitys = ref<QualityItem[]>([{ label: '自動', value: 'auto' }, { label: '320Kbps', value: '320' }, { label: '256Kbps', value: '256' }, { label: '192Kbps', value: '192' }, { label: '128Kbps', value: '128' }])
-const selectedQuality = ref<string>('auto')
+interface AppSettings {
+  savePath: string;
+  selectedExt: string;
+  selectedQuality: string;
+  playlistMode: boolean;
+  namedIndex: boolean;
+}
 
-const qualityOptions = computed<QualityItem[]>(() => {
-  if (['mp3'].includes(selectedExt.value)) {
-    return mp3Qualitys.value
-  } else if (['mp4', 'mkv'].includes(selectedExt.value)) {
-    return videoQualitys.value
-  } else {
-    return []
-  }
+const SETTINGS_KEY = 'app-config';
+const store = new LazyStore('settings.json')
+const currentOS = platform()
+
+const EXTS = ['mp4', 'mkv', 'mp3', 'flac', 'wav']
+const VIDEO_QUALITYS: QualityItem[] = [
+  { label: '自動', value: 'auto' },
+  { label: '4K', value: '2160' },
+  { label: '2K', value: '1440' },
+  { label: '1080p', value: '1080' },
+  { label: '720p', value: '720' }
+]
+const AUDIO_QUALITIES: QualityItem[] = [
+  { label: '自動', value: 'auto' },
+  { label: '320Kbps', value: '320' },
+  { label: '256Kbps', value: '256' },
+  { label: '192Kbps', value: '192' },
+  { label: '128Kbps', value: '128' }
+];
+
+const isInit = ref(false)
+const settings = reactive<AppSettings>({
+  savePath: '',
+  selectedExt: 'mp4',
+  selectedQuality: 'auto',
+  playlistMode: false,
+  namedIndex: false
 })
+
+const videoUrl = ref('');
+const downloading = ref(false);
+const downloadProgress = ref<number | null>(0);
+const downloadTitle = ref('');
+const downloadLog = ref<string[]>([]);
+const downloadErrors = ref<string[]>([]);
+const logArea = ref<HTMLElement | null>(null);
+
+const qualityOptions = computed(() => {
+  if (settings.selectedExt === 'mp3') {
+    return AUDIO_QUALITIES;
+  } else if (['mp4','mkv'].includes(settings.selectedExt)) {
+    return VIDEO_QUALITYS;
+  } else {
+    return [];
+  }
+});
+
+const addLog = (msg: string) => downloadLog.value.push(msg);
+
+const saveToDisk = async () => {
+  if (!isInit.value || !store) return;
+  try {
+    await store.set(SETTINGS_KEY, { ...settings });
+    await store.save();
+    console.log('SAVED!!')
+  } catch (err) {
+    console.error('ERROR:', err)
+  }
+}
+
+watch(settings, saveToDisk, { deep: true })
 
 // ログの自動スクロール
 watch(downloadLog, async () => {
@@ -57,107 +100,83 @@ watch(downloadLog, async () => {
 // 起動時の処理
 onMounted(async () => {
   try {
-    savePath.value = await homeDir();
-    console.log(savePath.value)
-    downloadLog.value.push('[🚀] yt-dlpの更新を確認しています...')
-    const updateYTDLP = Command.sidecar('binaries/yt-dlp', ['-U'])
-    await updateYTDLP.spawn()
-    updateYTDLP.on('close', (data) => {
-      console.log('yt-dlp update process closed with code:', data.code)
-    })
-    updateYTDLP.stdout.on('data', (line: string) => {
-      console.log('[UPDATE]', line.trim())
-      downloadLog.value.push('[🚀] ' + line.trim())
-    })
+    await store.init();
+    await store.reload();
+
+    const saved = await store.get<AppSettings>(SETTINGS_KEY);
+    const defaultPath = await homeDir();
+
+    if (saved) {
+      Object.assign(settings, saved);
+    } else {
+      settings.savePath = defaultPath;
+    }
+
+    await nextTick();
+    isInit.value = true;
+
+    addLog('[🚀] yt-dlpの更新を確認中...')
+    const updateCmd = Command.sidecar('binaries/yt-dlp', ['-U']);
+    updateCmd.stdout.on('data', (line) => addLog(`[UPDATE] ${line.trim()}`))
+    await updateCmd.spawn()
   } catch (err) {
-    console.error('Error:', err)
+    console.error('ERROR: ', err)
   }
-})
+});
 
 // 保存先選択処理
 const selectSaveDir = async () => {
-  if (!savePath.value) {
-    savePath.value = await homeDir();
-  }
-
-  const beforeDir = savePath.value
-
-  const dir = await open({
-    multiple: false,
-    directory: true
-  })
-
-  if (typeof dir === 'string') {
-    savePath.value = dir
-  } else {
-    savePath.value = beforeDir
+  const dir = await open({ multiple: false, directory: true });
+  if (dir && typeof dir === 'string') {
+    settings.savePath = dir;
   }
 }
 
 // ダウンロード処理
 const downloadVideo = async () => {
-  if (!videoUrl.value) {
-    downloadLog.value.push('[❌️] URLが入力されていません')
-    return
+  if (!videoUrl.value) return addLog('[❌] URLが入力されていません')
+
+  downloading.value = true;
+  downloadProgress.value = 0;
+  downloadTitle.value = '';
+  downloadErrors.value = [];
+  addLog('[⬇️] ダウンロードを開始します...')
+
+  const isAudio = ['mp3','flac','wav'].includes(settings.selectedExt);
+  const encoding = currentOS === 'windows' ? 'shift_jis' : 'utf-8';
+  const env: Record<string, string> = currentOS === 'macos' ? { PATH: '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/usr/sbin:/sbin' } : {}
+  const ytdlopts = ['--newline', '--no-color', '--progress-template', '[DOWNLOADING]::%(progress._percent)s::%(info.title)s']
+  
+  if (!isAudio) {
+    const q = settings.selectedQuality;
+    const format = q === 'auto' ? 'bestvideo+bestaudio[ext=m4a]/best' : `bestvideo[height<=${q}]+bestaudio[ext=m4a]/best[height<=${q}]`;
+    ytdlopts.push('-f', format, '--merge-output-format', settings.selectedExt)
+  } else {
+    ytdlopts.push('-f', 'bestaudio/best', '-x', '--audio-format', settings.selectedExt);
+    if (settings.selectedExt === 'mp3') {
+      const q = settings.selectedQuality === 'auto' ? '0' : settings.selectedQuality;
+      ytdlopts.push('--audio-quality', q)
+    }
   }
 
-  downloadLog.value.push('[⬇️] ダウンロードを開始します...')
-  downloadProgress.value = 0
-  downloading.value = true
-  downloadTitle.value = ''
-  downloadErrors.value = []
-  const progress_template = '[DOWNLOADING]::%(progress._percent)s::%(info.title)s'
-  const encoding = (await currentOS) === 'windows' ? 'shift_jis' : 'utf-8'
-  let env: Record<string, string> = {}
-  if (await currentOS === 'macos') {
-    env['PATH'] = '/opt/homebrew/bin:/usr/local/bin:'
-  }
-  const ytdlopts = ['--newline', '--no-color', '--progress-template', progress_template]
-  if (['mp4', 'mkv'].includes(selectedExt.value)) {
-    if (selectedQuality.value === 'auto') {
-      ytdlopts.push('-f', 'bestvideo+bestaudio[ext=m4a]/best')
-    } else if (selectedQuality.value) {
-      ytdlopts.push('-f', `bestvideo[height<=?${selectedQuality.value}]+bestaudio[ext=m4a]/best[height<=?${selectedQuality.value}]`)
-    } else {
-      ytdlopts.push('-f', 'bestvideo+bestaudio[ext=m4a]/best')
-    }
-    ytdlopts.push('--merge-output-format', selectedExt.value)
-  } else if (selectedExt.value === 'mp3') {
-    ytdlopts.push('-f', 'bestaudio/best','-x', '--audio-format', 'mp3')
-    if (selectedQuality.value && selectedQuality.value !== 'auto') {
-      ytdlopts.push('--audio-quality', selectedQuality.value)
-    } else {
-      ytdlopts.push('--audio-quality', '0')
-    }
-  } else if (selectedExt.value === 'flac') {
-    ytdlopts.push('-f', 'bestaudio/best','-x', '--audio-format', 'flac')
-  } else if (selectedExt.value === 'wav') {
-    ytdlopts.push('-f', 'bestaudio/best','-x', '--audio-format', 'wav')
-  }
-  if (playlistMode.value) {
-    if (namedIndex.value) {
-      ytdlopts.push('-o', savePath.value + '/%(playlist_title)s/%(playlist_index)s - %(title)s.%(ext)s')
-    } else {
-      ytdlopts.push('-o', savePath.value + '/%(playlist_title)s/%(title)s.%(ext)s')
-    }
+  let outputTemplate = settings.savePath;
+  if (settings.playlistMode) {
+    outputTemplate += settings.namedIndex ? '/%(playlist_title)s/%(playlist_index)s - %(title)s.%(ext)s' : '/%(playlist_title)s/%(title)s.%(ext)s'
   } else {
-    ytdlopts.push('-o', savePath.value + '/%(title)s.%(ext)s')
+    outputTemplate += '/%(title)s.%(ext)s';
   }
-  ytdlopts.push(videoUrl.value)
+  ytdlopts.push('-o', outputTemplate, videoUrl.value)
+
   console.log('yt-dlp options:', ytdlopts)
   const cmd = Command.sidecar('binaries/yt-dlp', ytdlopts, { encoding: encoding, env: env })
   cmd.stdout.on('data', (line: string) => {
-    if (line.startsWith('[DOWNLOADING]')) {
-      const parts = line.trim().split('::')
-      if (parts.length >= 3) {
-        const percentStr = parts[1].trim()
-        downloadProgress.value = parseFloat(percentStr)
-        if (!downloadTitle.value || downloadTitle.value !== parts[2].trim()) {
-          downloadTitle.value = parts[2].trim()
-        }
-      }
+    const trimmed = line.trim()
+    if (trimmed.startsWith('[DOWNLOADING]')) {
+      const [, percent, title] = trimmed.split('::');
+      downloadProgress.value = parseFloat(percent)
+      if (title) downloadTitle.value = title
     } else {
-      downloadLog.value.push(line.trim())
+      addLog(trimmed)
       downloadProgress.value = null
     }
   })
@@ -183,38 +202,38 @@ const downloadVideo = async () => {
 </script>
 
 <template>
-  <main class="p-6 h-screen min-h-screen relative">
+  <main class="p-6 h-screen min-h-screen relative flex flex-col gap-4">
     <h1 class="text-2xl font-bold">Syt</h1>
-    <div class="flex flex-col items-start gap-2 mt-4 w-full">
+    <div class="flex flex-col items-start gap-2 w-full">
       <div class="flex flex-row items-center w-full gap-2">
         <Input v-model="videoUrl" type="text" placeholder="URLを入力..." />
       </div>
       <div class="flex flex-row items-center w-full gap-2">
-        <Input v-model="savePath" type="text" placeholder="保存先" readonly />
+        <Input v-model="settings.savePath" type="text" placeholder="保存先" readonly />
         <Button @click="selectSaveDir"><span class="material-icons">folder</span>保存先を選択</Button>
       </div>
       <h2 class="text-lg font-bold">オプション</h2>
       <div class="flex flex-col sm:flex-row items-center w-full gap-2">
         <div class="flex flex-row items-center w-full">
           <Label for="extSelect" class="whitespace-nowrap mr-2">拡張子</Label>
-          <Select v-model="selectedExt" class="w-32" id="extSelect">
+          <Select v-model="settings.selectedExt" class="w-32" id="extSelect">
             <SelectTrigger class="w-full">
               <SelectValue placeholder="拡張子を選択" />
             </SelectTrigger>
             <SelectContent>
               <SelectLabel>拡張子を選択</SelectLabel>
-              <SelectItem v-for="ext in exts" :value="ext" :key="ext">{{ ext }}</SelectItem>
+              <SelectItem v-for="ext in EXTS" :value="ext" :key="ext">{{ ext }}</SelectItem>
             </SelectContent>
           </Select>
         </div>
         <div class="flex flex-row items-center w-full">
           <Label for="qualitySelect" class="whitespace-nowrap mr-2">品質</Label>
-          <Select v-model="selectedQuality" class="w-32" id="qualitySelect">
+          <Select v-model="settings.selectedQuality" class="w-32" id="qualitySelect">
             <SelectTrigger class="w-full">
               <SelectValue placeholder="品質を選択" />
             </SelectTrigger>
             <SelectContent>
-              <SelectLabel>{{ selectedExt === 'mp3' ? '音質を選択' : '画質を選択' }}</SelectLabel>
+              <SelectLabel>品質を選択</SelectLabel>
               <SelectItem v-for="quality in qualityOptions" :value="quality.value" :key="quality.value">{{ quality.label }}</SelectItem>
             </SelectContent>
           </Select>
@@ -222,11 +241,11 @@ const downloadVideo = async () => {
       </div>
       <div class="flex flex-col sm:flex-row items-start sm:items-center w-full gap-2">
         <div class="flex flex-row gap-2">
-          <Switch v-model="playlistMode" id="playlistSwitch" />
+          <Switch v-model="settings.playlistMode" id="playlistSwitch" />
           <Label for="playlistSwitch">プレイリストモード</Label>
         </div>
         <div class="flex flex-row gap-2">
-          <Switch :disabled="!playlistMode" v-model="namedIndex" id="namedIndexSwitch" />
+          <Switch :disabled="!settings.playlistMode" v-model="settings.namedIndex" id="namedIndexSwitch" />
           <Label for="namedIndexSwitch">インデックスをファイル名に追加する</Label>
         </div>
 
@@ -235,13 +254,13 @@ const downloadVideo = async () => {
       <div class="flex flex-row items-center w-full gap-2">
         <Progress :model-value="downloadProgress" class="w-full" />
       </div>
-      <div class="w-full h-40 overflow-y-auto border border-gray-200 rounded-sm p-2" ref="logArea">
+      <div class="w-full h-30 overflow-y-auto border border-gray-200 rounded p-2 bg-slate-50" ref="logArea">
         <p class="text-sm font-mono" v-for="log in downloadLog" :key="log">{{ log }}</p>
       </div>
     </div>
-    <div class="absolute bottom-4 right-4">
+    <div class="absolute bottom-6 right-6">
       <Button :disabled="downloading" @click="downloadVideo"><span
-          class="material-icons">cloud_download</span>ダウンロード開始</Button>
+          class="material-icons">cloud_download</span>{{ downloading ? 'ダウンロード中...' : 'ダウンロード' }}</Button>
     </div>
   </main>
 </template>
