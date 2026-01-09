@@ -25,6 +25,9 @@ interface AppSettings {
   selectedQuality: string;
   playlistMode: boolean;
   namedIndex: boolean;
+  embedThumbnails: boolean;
+  cropdThumbnails: boolean;
+  embedMetadata: boolean;
 }
 
 const SETTINGS_KEY = 'app-config';
@@ -53,7 +56,10 @@ const settings = reactive<AppSettings>({
   selectedExt: 'mp4',
   selectedQuality: 'auto',
   playlistMode: false,
-  namedIndex: false
+  namedIndex: false,
+  embedThumbnails: false,
+  cropdThumbnails: false,
+  embedMetadata: false
 })
 
 const videoUrl = ref('');
@@ -67,7 +73,7 @@ const logArea = ref<HTMLElement | null>(null);
 const qualityOptions = computed(() => {
   if (settings.selectedExt === 'mp3') {
     return AUDIO_QUALITIES;
-  } else if (['mp4','mkv'].includes(settings.selectedExt)) {
+  } else if (['mp4', 'mkv'].includes(settings.selectedExt)) {
     return VIDEO_QUALITYS;
   } else {
     return [];
@@ -142,11 +148,11 @@ const downloadVideo = async () => {
   downloadErrors.value = [];
   addLog('[⬇️] ダウンロードを開始します...')
 
-  const isAudio = ['mp3','flac','wav'].includes(settings.selectedExt);
+  const isAudio = ['mp3', 'flac', 'wav'].includes(settings.selectedExt);
   const encoding = currentOS === 'windows' ? 'shift_jis' : 'utf-8';
   const env: Record<string, string> = currentOS === 'macos' ? { PATH: '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/usr/sbin:/sbin' } : {}
   const ytdlopts = ['--newline', '--no-color', '--progress-template', '[DOWNLOADING]::%(progress._percent)s::%(info.title)s']
-  
+
   if (!isAudio) {
     const q = settings.selectedQuality;
     const format = q === 'auto' ? 'bestvideo+bestaudio[ext=m4a]/best' : `bestvideo[height<=${q}]+bestaudio[ext=m4a]/best[height<=${q}]`;
@@ -165,6 +171,18 @@ const downloadVideo = async () => {
   } else {
     outputTemplate += '/%(title)s.%(ext)s';
   }
+
+  if (settings.embedThumbnails && settings.selectedExt !== 'wav') {
+    ytdlopts.push('--embed-thumbnail')
+    if (settings.cropdThumbnails) {
+      ytdlopts.push("--convert-thumbnails", "jpg", "--ppa", "ThumbnailsConvertor:-qmin 1 -q:v 1 -vf crop=\"'if(gt(ih,iw),iw,ih)':'if(gt(iw,ih),ih,iw)'\"")
+    }
+  }
+
+  if (settings.embedMetadata && settings.selectedExt !== 'wav') {
+    ytdlopts.push('--add-metadata')
+  }
+
   ytdlopts.push('-o', outputTemplate, videoUrl.value)
 
   console.log('yt-dlp options:', ytdlopts)
@@ -202,65 +220,75 @@ const downloadVideo = async () => {
 </script>
 
 <template>
-  <main class="p-6 h-screen min-h-screen relative flex flex-col gap-4">
+  <main class="p-6 h-screen min-h-screen relative flex flex-col gap-2">
     <h1 class="text-2xl font-bold">Syt</h1>
-    <div class="flex flex-col items-start gap-2 w-full">
-      <div class="flex flex-row items-center w-full gap-2">
-        <Input v-model="videoUrl" type="text" placeholder="URLを入力..." />
+    <div class="flex flex-row items-center w-full gap-2">
+      <Input v-model="videoUrl" type="text" placeholder="URLを入力..." />
+    </div>
+    <div class="flex flex-row items-center w-full gap-2">
+      <Input v-model="settings.savePath" type="text" placeholder="保存先" readonly />
+      <Button @click="selectSaveDir"><span class="material-icons">folder</span>保存先を選択</Button>
+    </div>
+    <h2 class="text-lg font-bold">オプション</h2>
+    <div class="flex flex-col sm:flex-row items-center w-full gap-2">
+      <div class="flex flex-row items-center w-full">
+        <Label for="extSelect" class="whitespace-nowrap mr-2">拡張子</Label>
+        <Select v-model="settings.selectedExt" class="w-32" id="extSelect">
+          <SelectTrigger class="w-full">
+            <SelectValue placeholder="拡張子を選択" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectLabel>拡張子を選択</SelectLabel>
+            <SelectItem v-for="ext in EXTS" :value="ext" :key="ext">{{ ext }}</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
-      <div class="flex flex-row items-center w-full gap-2">
-        <Input v-model="settings.savePath" type="text" placeholder="保存先" readonly />
-        <Button @click="selectSaveDir"><span class="material-icons">folder</span>保存先を選択</Button>
-      </div>
-      <h2 class="text-lg font-bold">オプション</h2>
-      <div class="flex flex-col sm:flex-row items-center w-full gap-2">
-        <div class="flex flex-row items-center w-full">
-          <Label for="extSelect" class="whitespace-nowrap mr-2">拡張子</Label>
-          <Select v-model="settings.selectedExt" class="w-32" id="extSelect">
-            <SelectTrigger class="w-full">
-              <SelectValue placeholder="拡張子を選択" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectLabel>拡張子を選択</SelectLabel>
-              <SelectItem v-for="ext in EXTS" :value="ext" :key="ext">{{ ext }}</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div class="flex flex-row items-center w-full">
-          <Label for="qualitySelect" class="whitespace-nowrap mr-2">品質</Label>
-          <Select v-model="settings.selectedQuality" class="w-32" id="qualitySelect">
-            <SelectTrigger class="w-full">
-              <SelectValue placeholder="品質を選択" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectLabel>品質を選択</SelectLabel>
-              <SelectItem v-for="quality in qualityOptions" :value="quality.value" :key="quality.value">{{ quality.label }}</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-      <div class="flex flex-col sm:flex-row items-start sm:items-center w-full gap-2">
-        <div class="flex flex-row gap-2">
-          <Switch v-model="settings.playlistMode" id="playlistSwitch" />
-          <Label for="playlistSwitch">プレイリストモード</Label>
-        </div>
-        <div class="flex flex-row gap-2">
-          <Switch :disabled="!settings.playlistMode" v-model="settings.namedIndex" id="namedIndexSwitch" />
-          <Label for="namedIndexSwitch">インデックスをファイル名に追加する</Label>
-        </div>
-
-      </div>
-      <h2 class="text-lg font-bold">ログ</h2>
-      <div class="flex flex-row items-center w-full gap-2">
-        <Progress :model-value="downloadProgress" class="w-full" />
-      </div>
-      <div class="w-full h-30 overflow-y-auto border border-gray-200 rounded p-2 bg-slate-50" ref="logArea">
-        <p class="text-sm font-mono" v-for="log in downloadLog" :key="log">{{ log }}</p>
+      <div class="flex flex-row items-center w-full">
+        <Label for="qualitySelect" class="whitespace-nowrap mr-2">品質</Label>
+        <Select v-model="settings.selectedQuality" class="w-32" id="qualitySelect">
+          <SelectTrigger class="w-full">
+            <SelectValue placeholder="品質を選択" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectLabel>品質を選択</SelectLabel>
+            <SelectItem v-for="quality in qualityOptions" :value="quality.value" :key="quality.value">{{ quality.label
+              }}</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
     </div>
-    <div class="absolute bottom-6 right-6">
-      <Button :disabled="downloading" @click="downloadVideo"><span
-          class="material-icons">cloud_download</span>{{ downloading ? 'ダウンロード中...' : 'ダウンロード' }}</Button>
+    <div class="flex flex-wrap w-full gap-2">
+      <div class="flex flex-row gap-2">
+        <Switch v-model="settings.playlistMode" id="playlistSwitch" />
+        <Label for="playlistSwitch">プレイリストモード</Label>
+      </div>
+      <div class="flex flex-row gap-2">
+        <Switch :disabled="!settings.playlistMode" v-model="settings.namedIndex" id="namedIndexSwitch" />
+        <Label for="namedIndexSwitch">インデックスをファイル名に追加する</Label>
+      </div>
+      <div class="flex flex-row gap-2">
+        <Switch v-model="settings.embedThumbnails" id="embedThumbnailsSwitch" />
+        <Label for="embedThumbnailsSwitch">サムネイルを埋め込む</Label>
+      </div>
+      <div class="flex flex-row gap-2">
+        <Switch :disabled="!settings.embedThumbnails" v-model="settings.cropdThumbnails" id="cropThumbnailsSwitch" />
+        <Label for="cropThumbnailsSwitch">サムネイルを1:1にクロップ</Label>
+      </div>
+      <div class="flex flex-row gap-2">
+        <Switch v-model="settings.embedMetadata" id="embedMetadataSwitch" />
+        <Label for="embedMetadataSwitch">メタデータを埋め込む</Label>
+      </div>
+    </div>
+    <h2 class="text-lg font-bold">ログ</h2>
+    <div class="flex flex-row items-center w-full gap-2">
+      <Progress :model-value="downloadProgress" class="w-full" />
+    </div>
+    <div class="w-full flex-1 overflow-y-auto border border-gray-200 rounded p-2 bg-slate-50" ref="logArea">
+      <p class="text-sm font-mono" v-for="log in downloadLog" :key="log">{{ log }}</p>
+    </div>
+    <div class="absolute bottom-4 right-4">
+      <Button :disabled="downloading" @click="downloadVideo"><span class="material-icons">cloud_download</span>{{
+        downloading ? 'ダウンロード中...' : 'ダウンロード' }}</Button>
     </div>
   </main>
 </template>
