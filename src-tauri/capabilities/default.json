@@ -38,6 +38,7 @@
     },
     "store:default",
     "os:default",
-    "shell:allow-kill"
+    "shell:allow-kill",
+    "notification:default"
   ]
 }

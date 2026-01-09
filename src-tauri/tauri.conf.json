@@ -33,6 +33,14 @@
     ],
     "externalBin": [
       "binaries/yt-dlp"
-    ]
+    ],
+    "windows": {
+      "nsis": {
+        "languages": ["Japanese"]
+      },
+      "wix": {
+        "language": "ja-JP"
+      }
+    }
   }
 }

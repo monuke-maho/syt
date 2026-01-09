@@ -6,6 +6,7 @@ import { homeDir } from '@tauri-apps/api/path';
 import { Command } from '@tauri-apps/plugin-shell';
 import { platform } from '@tauri-apps/plugin-os';
 import { LazyStore } from '@tauri-apps/plugin-store';
+import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/plugin-notification';
 
 import { Button } from './components/ui/button';
 import { Input } from './components/ui/input';
@@ -28,6 +29,7 @@ interface AppSettings {
   embedThumbnails: boolean;
   cropdThumbnails: boolean;
   embedMetadata: boolean;
+  albumMode: boolean;
 }
 
 const SETTINGS_KEY = 'app-config';
@@ -59,7 +61,8 @@ const settings = reactive<AppSettings>({
   namedIndex: false,
   embedThumbnails: false,
   cropdThumbnails: false,
-  embedMetadata: false
+  embedMetadata: false,
+  albumMode: false
 })
 
 const videoUrl = ref('');
@@ -107,7 +110,6 @@ watch(downloadLog, async () => {
 onMounted(async () => {
   try {
     await store.init();
-    await store.reload();
 
     const saved = await store.get<AppSettings>(SETTINGS_KEY);
     const defaultPath = await homeDir();
@@ -141,6 +143,12 @@ const selectSaveDir = async () => {
 // ダウンロード処理
 const downloadVideo = async () => {
   if (!videoUrl.value) return addLog('[❌] URLが入力されていません')
+  let permissionGranted = await isPermissionGranted();
+  if (!permissionGranted) {
+    const notifyPermission = await requestPermission();
+    permissionGranted = notifyPermission === 'granted';
+    console.log('Notification permission:', notifyPermission);
+  }
 
   downloading.value = true;
   downloadProgress.value = 0;
@@ -153,37 +161,51 @@ const downloadVideo = async () => {
   const env: Record<string, string> = currentOS === 'macos' ? { PATH: '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/usr/sbin:/sbin' } : {}
   const ytdlopts = ['--newline', '--no-color', '--progress-template', '[DOWNLOADING]::%(progress._percent)s::%(info.title)s']
 
-  if (!isAudio) {
-    const q = settings.selectedQuality;
-    const format = q === 'auto' ? 'bestvideo+bestaudio[ext=m4a]/best' : `bestvideo[height<=${q}]+bestaudio[ext=m4a]/best[height<=${q}]`;
-    ytdlopts.push('-f', format, '--merge-output-format', settings.selectedExt)
-  } else {
+  if (settings.albumMode && isAudio) {
     ytdlopts.push('-f', 'bestaudio/best', '-x', '--audio-format', settings.selectedExt);
     if (settings.selectedExt === 'mp3') {
       const q = settings.selectedQuality === 'auto' ? '0' : settings.selectedQuality;
       ytdlopts.push('--audio-quality', q)
     }
-  }
-
-  let outputTemplate = settings.savePath;
-  if (settings.playlistMode) {
-    outputTemplate += settings.namedIndex ? '/%(playlist_title)s/%(playlist_index)s - %(title)s.%(ext)s' : '/%(playlist_title)s/%(title)s.%(ext)s'
-  } else {
-    outputTemplate += '/%(title)s.%(ext)s';
-  }
-
-  if (settings.embedThumbnails && settings.selectedExt !== 'wav') {
-    ytdlopts.push('--embed-thumbnail')
-    if (settings.cropdThumbnails) {
-      ytdlopts.push("--convert-thumbnails", "jpg", "--ppa", "ThumbnailsConvertor:-qmin 1 -q:v 1 -vf crop=\"'if(gt(ih,iw),iw,ih)':'if(gt(iw,ih),ih,iw)'\"")
+    let outputTemplate = settings.savePath;
+    outputTemplate += '/%(album)s/%(playlist_index)02d - %(title)s.%(ext)s';
+    ytdlopts.push('-o', outputTemplate)
+    if (settings.selectedExt !== 'wav') {
+      ytdlopts.push('--embed-thumbnail', "--convert-thumbnails", "jpg", "--ppa", "ThumbnailsConvertor:-qmin 1 -q:v 1 -vf crop=\"'if(gt(ih,iw),iw,ih)':'if(gt(iw,ih),ih,iw)'\"")
     }
+    ytdlopts.push('--add-metadata', '--parse-metadata', '%(playlist_index)s/%(n_entries)s:%(track_number)s', '--parse-metadata', '%(upload_date).4s:&(meta_date)s', '--parse-metadata', '%(creators.0)s:%(meta_artist)s')
+  } else {
+    // 処理
+    if (!isAudio) {
+      const q = settings.selectedQuality;
+      const format = q === 'auto' ? 'bestvideo+bestaudio[ext=m4a]/best' : `bestvideo[height<=${q}]+bestaudio[ext=m4a]/best[height<=${q}]`;
+      ytdlopts.push('-f', format, '--merge-output-format', settings.selectedExt)
+    } else {
+      ytdlopts.push('-f', 'bestaudio/best', '-x', '--audio-format', settings.selectedExt);
+      if (settings.selectedExt === 'mp3') {
+        const q = settings.selectedQuality === 'auto' ? '0' : settings.selectedQuality;
+        ytdlopts.push('--audio-quality', q)
+      }
+    }
+    let outputTemplate = settings.savePath;
+    if (settings.playlistMode) {
+      outputTemplate += settings.namedIndex ? '/%(playlist_title)s/%(playlist_index)s - %(title)s.%(ext)s' : '/%(playlist_title)s/%(title)s.%(ext)s'
+    } else {
+      outputTemplate += '/%(title)s.%(ext)s';
+    }
+    if (settings.embedThumbnails && settings.selectedExt !== 'wav') {
+      ytdlopts.push('--embed-thumbnail')
+      if (settings.cropdThumbnails) {
+        ytdlopts.push("--convert-thumbnails", "jpg", "--ppa", "ThumbnailsConvertor:-qmin 1 -q:v 1 -vf crop=\"'if(gt(ih,iw),iw,ih)':'if(gt(iw,ih),ih,iw)'\"")
+      }
+    }
+    if (settings.embedMetadata) {
+      ytdlopts.push('--add-metadata')
+    }
+    ytdlopts.push('-o', outputTemplate)
   }
 
-  if (settings.embedMetadata && settings.selectedExt !== 'wav') {
-    ytdlopts.push('--add-metadata')
-  }
-
-  ytdlopts.push('-o', outputTemplate, videoUrl.value)
+  ytdlopts.push(videoUrl.value)
 
   console.log('yt-dlp options:', ytdlopts)
   const cmd = Command.sidecar('binaries/yt-dlp', ytdlopts, { encoding: encoding, env: env })
@@ -208,19 +230,25 @@ const downloadVideo = async () => {
     if (data.code === 0) {
       downloadProgress.value = 100
       downloadLog.value.push('[✅] ダウンロードが完了しました！')
+      if (permissionGranted) {
+        sendNotification({ title: 'ダウンロード完了', body: 'ダウンロードを完了しました。' })
+      }
     } else if (data.code === 1) {
       downloadProgress.value = 0
       downloadLog.value.push('[❌] ダウンロード中にエラーが発生しました。')
       downloadErrors.value.forEach((err) => {
         downloadLog.value.push('[ERROR] ' + err)
       })
+      if (permissionGranted) {
+        sendNotification({ title: 'エラー発生', body: 'ダウンロード中にエラーが発生しました。' })
+      }
     }
   })
 }
 </script>
 
 <template>
-  <main class="p-6 h-screen min-h-screen relative flex flex-col gap-2">
+  <main class="p-6 h-screen min-h-screen relative flex flex-col gap-2 **:select-none">
     <h1 class="text-2xl font-bold">Syt</h1>
     <div class="flex flex-row items-center w-full gap-2">
       <Input v-model="videoUrl" type="text" placeholder="URLを入力..." />
@@ -252,7 +280,7 @@ const downloadVideo = async () => {
           <SelectContent>
             <SelectLabel>品質を選択</SelectLabel>
             <SelectItem v-for="quality in qualityOptions" :value="quality.value" :key="quality.value">{{ quality.label
-              }}</SelectItem>
+            }}</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -261,6 +289,10 @@ const downloadVideo = async () => {
       <div class="flex flex-row gap-2">
         <Switch v-model="settings.playlistMode" id="playlistSwitch" />
         <Label for="playlistSwitch">プレイリストモード</Label>
+      </div>
+      <div class="flex flex-row gap-2">
+        <Switch v-model="settings.albumMode" id="albumSwitch" />
+        <Label for="albumSwitch">アルバムモード</Label>
       </div>
       <div class="flex flex-row gap-2">
         <Switch :disabled="!settings.playlistMode" v-model="settings.namedIndex" id="namedIndexSwitch" />
@@ -284,7 +316,7 @@ const downloadVideo = async () => {
       <Progress :model-value="downloadProgress" class="w-full" />
     </div>
     <div class="w-full flex-1 overflow-y-auto border border-gray-200 rounded p-2 bg-slate-50" ref="logArea">
-      <p class="text-sm font-mono" v-for="log in downloadLog" :key="log">{{ log }}</p>
+      <p class="text-sm font-mono select-text!" v-for="log in downloadLog" :key="log">{{ log }}</p>
     </div>
     <div class="absolute bottom-4 right-4">
       <Button :disabled="downloading" @click="downloadVideo"><span class="material-icons">cloud_download</span>{{
