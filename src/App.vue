@@ -69,7 +69,7 @@ const settings = reactive<AppSettings>({
 const videoUrl = ref('');
 const downloading = ref(false);
 const downloadProgress = ref<number | null>(0);
-const downloadTitle = ref('');
+const status = ref('ステータス');
 const downloadLog = ref<string[]>([]);
 const downloadErrors = ref<string[]>([]);
 const logArea = ref<HTMLElement | null>(null);
@@ -154,7 +154,7 @@ const downloadVideo = async () => {
 
   downloading.value = true;
   downloadProgress.value = 0;
-  downloadTitle.value = '';
+  status.value = 'ダウンロードを開始します...';
   downloadErrors.value = [];
   activeTab.value = 'logs'; // Switch to logs tab
   addLog('[⬇️] ダウンロードを開始します...')
@@ -217,7 +217,7 @@ const downloadVideo = async () => {
     if (trimmed.startsWith('[DOWNLOADING]')) {
       const [, percent, title] = trimmed.split('::');
       downloadProgress.value = parseFloat(percent)
-      if (title) downloadTitle.value = title
+      if (title) status.value = title + ' をダウンロード中...'
     } else {
       addLog(trimmed)
       downloadProgress.value = null
@@ -229,7 +229,7 @@ const downloadVideo = async () => {
   await cmd.spawn()
   cmd.on('close', (data) => {
     downloading.value = false
-    downloadTitle.value = ''
+    status.value = 'ダウンロードが完了しました！'
     if (data.code === 0) {
       downloadProgress.value = 100
       downloadLog.value.push('[✅] ダウンロードが完了しました！')
@@ -238,6 +238,7 @@ const downloadVideo = async () => {
       }
     } else if (data.code === 1) {
       downloadProgress.value = 0
+      status.value = 'ダウンロード中にエラーが発生しました'
       downloadLog.value.push('[❌] ダウンロード中にエラーが発生しました。')
       downloadErrors.value.forEach((err) => {
         downloadLog.value.push('[ERROR] ' + err)
@@ -267,7 +268,7 @@ const downloadVideo = async () => {
       <div class="flex flex-row items-center w-full gap-2">
         <Progress :model-value="downloadProgress" class="w-full" />
       </div>
-      <p v-if="downloadTitle" class="text-sm text-muted-foreground truncate">{{ downloadTitle }}</p>
+      <p class="text-sm text-muted-foreground truncate">{{ status }}</p>
     </div>
 
     <!-- Save Path -->
