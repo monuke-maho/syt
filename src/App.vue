@@ -13,7 +13,8 @@ import { Input } from './components/ui/input';
 import { Progress } from './components/ui/progress';
 import { Switch } from './components/ui/switch';
 import { Label } from './components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectLabel } from './components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './components/ui/select';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from './components/ui/tabs';
 
 interface QualityItem {
   label: string;
@@ -72,6 +73,7 @@ const downloadTitle = ref('');
 const downloadLog = ref<string[]>([]);
 const downloadErrors = ref<string[]>([]);
 const logArea = ref<HTMLElement | null>(null);
+const activeTab = ref('options');
 
 const qualityOptions = computed(() => {
   if (settings.selectedExt === 'mp3') {
@@ -154,6 +156,7 @@ const downloadVideo = async () => {
   downloadProgress.value = 0;
   downloadTitle.value = '';
   downloadErrors.value = [];
+  activeTab.value = 'logs'; // Switch to logs tab
   addLog('[⬇️] ダウンロードを開始します...')
 
   const isAudio = ['mp3', 'flac', 'wav'].includes(settings.selectedExt);
@@ -250,77 +253,133 @@ const downloadVideo = async () => {
 <template>
   <main class="p-6 h-screen min-h-screen relative flex flex-col gap-2 **:select-none">
     <h1 class="text-2xl font-bold">Syt</h1>
+
+    <!-- URL Input -->
     <div class="flex flex-row items-center w-full gap-2">
       <Input v-model="videoUrl" type="text" placeholder="URLを入力..." />
+      <Button :disabled="downloading" @click="downloadVideo"><span class="material-icons">{{ downloading ?
+        'downloading'
+        : 'download' }}</span>{{ downloading ? 'ダウンロード中' : 'ダウンロード' }}</Button>
     </div>
+
+    <!-- Progress Bar (Always Visible) -->
+    <div v-if="downloading || downloadProgress !== null" class="flex flex-col gap-1">
+      <div class="flex flex-row items-center w-full gap-2">
+        <Progress :model-value="downloadProgress" class="w-full" />
+      </div>
+      <p v-if="downloadTitle" class="text-sm text-muted-foreground truncate">{{ downloadTitle }}</p>
+    </div>
+
+    <!-- Save Path -->
     <div class="flex flex-row items-center w-full gap-2">
       <Input v-model="settings.savePath" type="text" placeholder="保存先" readonly />
       <Button @click="selectSaveDir"><span class="material-icons">folder</span>保存先を選択</Button>
     </div>
-    <h2 class="text-lg font-bold">オプション</h2>
-    <div class="flex flex-col sm:flex-row items-center w-full gap-2">
-      <div class="flex flex-row items-center w-full">
-        <Label for="extSelect" class="whitespace-nowrap mr-2">拡張子</Label>
-        <Select v-model="settings.selectedExt" class="w-32" id="extSelect">
-          <SelectTrigger class="w-full">
-            <SelectValue placeholder="拡張子を選択" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectLabel>拡張子を選択</SelectLabel>
-            <SelectItem v-for="ext in EXTS" :value="ext" :key="ext">{{ ext }}</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-      <div class="flex flex-row items-center w-full">
-        <Label for="qualitySelect" class="whitespace-nowrap mr-2">品質</Label>
-        <Select v-model="settings.selectedQuality" class="w-32" id="qualitySelect">
-          <SelectTrigger class="w-full">
-            <SelectValue placeholder="品質を選択" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectLabel>品質を選択</SelectLabel>
-            <SelectItem v-for="quality in qualityOptions" :value="quality.value" :key="quality.value">{{ quality.label
-            }}</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-    </div>
-    <div class="flex flex-wrap w-full gap-2">
-      <div class="flex flex-row gap-2">
-        <Switch v-model="settings.playlistMode" id="playlistSwitch" />
-        <Label for="playlistSwitch">プレイリストモード</Label>
-      </div>
-      <div class="flex flex-row gap-2">
-        <Switch v-model="settings.albumMode" id="albumSwitch" />
-        <Label for="albumSwitch">アルバムモード</Label>
-      </div>
-      <div class="flex flex-row gap-2">
-        <Switch :disabled="!settings.playlistMode" v-model="settings.namedIndex" id="namedIndexSwitch" />
-        <Label for="namedIndexSwitch">インデックスをファイル名に追加する</Label>
-      </div>
-      <div class="flex flex-row gap-2">
-        <Switch v-model="settings.embedThumbnails" id="embedThumbnailsSwitch" />
-        <Label for="embedThumbnailsSwitch">サムネイルを埋め込む</Label>
-      </div>
-      <div class="flex flex-row gap-2">
-        <Switch :disabled="!settings.embedThumbnails" v-model="settings.cropdThumbnails" id="cropThumbnailsSwitch" />
-        <Label for="cropThumbnailsSwitch">サムネイルを1:1にクロップ</Label>
-      </div>
-      <div class="flex flex-row gap-2">
-        <Switch v-model="settings.embedMetadata" id="embedMetadataSwitch" />
-        <Label for="embedMetadataSwitch">メタデータを埋め込む</Label>
-      </div>
-    </div>
-    <h2 class="text-lg font-bold">ログ</h2>
-    <div class="flex flex-row items-center w-full gap-2">
-      <Progress :model-value="downloadProgress" class="w-full" />
-    </div>
-    <div class="w-full flex-1 overflow-y-auto border border-gray-200 rounded p-2 bg-slate-50" ref="logArea">
-      <p class="text-sm font-mono select-text!" v-for="log in downloadLog" :key="log">{{ log }}</p>
-    </div>
-    <div class="absolute bottom-4 right-4">
-      <Button :disabled="downloading" @click="downloadVideo"><span class="material-icons">cloud_download</span>{{
-        downloading ? 'ダウンロード中...' : 'ダウンロード' }}</Button>
-    </div>
+
+    <!-- Tabs for Options and Logs -->
+    <Tabs v-model="activeTab" class="flex-1 flex flex-col overflow-hidden">
+      <TabsList class="grid w-full grid-cols-2">
+        <TabsTrigger value="options">オプション</TabsTrigger>
+        <TabsTrigger value="logs">ログ</TabsTrigger>
+      </TabsList>
+
+      <TabsContent value="options" class="flex-1 overflow-y-auto mt-4 space-y-6 pr-2">
+
+        <section class="space-y-3">
+          <div class="flex items-center gap-2 mb-1">
+            <span class="material-icons text-sm">settings</span>
+            <h3 class="text-sm font-semibold text-muted-foreground">基本設定</h3>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-secondary/30 p-4 rounded-lg">
+            <div class="space-y-2">
+              <Label for="extSelect" class="text-xs font-medium">拡張子</Label>
+              <Select v-model="settings.selectedExt" id="extSelect">
+                <SelectTrigger class="w-full bg-background">
+                  <SelectValue placeholder="選択" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem v-for="ext in EXTS" :value="ext" :key="ext">{{ ext }}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div class="space-y-2">
+              <Label for="qualitySelect" class="text-xs font-medium">品質</Label>
+              <Select v-model="settings.selectedQuality" id="qualitySelect">
+                <SelectTrigger class="w-full bg-background">
+                  <SelectValue placeholder="選択" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem v-for="quality in qualityOptions" :value="quality.value" :key="quality.value">{{
+                    quality.label }}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </section>
+
+        <section class="space-y-3">
+          <div class="flex items-center gap-2 mb-1">
+            <span class="material-icons text-sm">playlist_play</span>
+            <h3 class="text-sm font-semibold text-muted-foreground">プレイリスト・アルバム</h3>
+          </div>
+          <div class="grid grid-cols-1 gap-1 border rounded-lg divide-y">
+            <div class="flex items-center justify-between p-3">
+              <div class="space-y-0.5">
+                <Label for="playlistSwitch" class="text-sm font-medium">プレイリストモード</Label>
+                <p class="text-xs text-muted-foreground">複数の動画をまとめて取得します</p>
+              </div>
+              <Switch v-model="settings.playlistMode" id="playlistSwitch" />
+            </div>
+            <div class="flex items-center justify-between p-3" :class="{ 'opacity-50': !settings.playlistMode }">
+              <div class="space-y-0.5">
+                <Label for="namedIndexSwitch" class="text-sm font-medium">インデックスを付与</Label>
+                <p class="text-xs text-muted-foreground">ファイル名の先頭に番号を追加</p>
+              </div>
+              <Switch :disabled="!settings.playlistMode" v-model="settings.namedIndex" id="namedIndexSwitch" />
+            </div>
+            <div class="flex items-center justify-between p-3"
+              :class="{ 'opacity-50': !['mp3', 'flac', 'wav'].includes(settings.selectedExt) }">
+              <div class="space-y-0.5">
+                <Label for="albumSwitch" class="text-sm font-medium">アルバムモード</Label>
+                <p class="text-xs text-muted-foreground">オーディオ形式時のみ有効</p>
+              </div>
+              <Switch :disabled="!['mp3', 'flac', 'wav'].includes(settings.selectedExt)" v-model="settings.albumMode"
+                id="albumSwitch" />
+            </div>
+          </div>
+        </section>
+
+        <section class="space-y-3">
+          <div class="flex items-center gap-2 mb-1">
+            <span class="material-icons text-sm">audio_file</span>
+            <h3 class="text-sm font-semibold text-muted-foreground">メタデータ・サムネイル</h3>
+          </div>
+          <div class="grid grid-cols-1 gap-1 border rounded-lg divide-y">
+            <div class="flex items-center justify-between p-3">
+              <Label for="embedMetadataSwitch" class="text-sm font-medium">メタデータを埋め込む</Label>
+              <Switch v-model="settings.embedMetadata" id="embedMetadataSwitch" />
+            </div>
+            <div class="flex items-center justify-between p-3">
+              <Label for="embedThumbnailsSwitch" class="text-sm font-medium">サムネイルを埋め込む</Label>
+              <Switch v-model="settings.embedThumbnails" id="embedThumbnailsSwitch" />
+            </div>
+            <div class="flex items-center justify-between p-3" :class="{ 'opacity-50': !settings.embedThumbnails }">
+              <Label for="cropThumbnailsSwitch" class="text-sm font-medium text-muted-foreground ml-4">└
+                1:1にクロップ</Label>
+              <Switch :disabled="!settings.embedThumbnails" v-model="settings.cropdThumbnails"
+                id="cropThumbnailsSwitch" />
+            </div>
+          </div>
+        </section>
+
+      </TabsContent>
+
+      <!-- Logs Tab -->
+      <TabsContent value="logs" class="flex-1 overflow-hidden mt-4">
+        <div class="w-full h-full overflow-y-auto border border-gray-200 rounded p-2 bg-slate-50" ref="logArea">
+          <p class="text-sm font-mono select-text!" v-for="log in downloadLog" :key="log">{{ log }}</p>
+        </div>
+      </TabsContent>
+    </Tabs>
   </main>
 </template>
