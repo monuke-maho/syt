@@ -7,6 +7,7 @@ import { Command } from '@tauri-apps/plugin-shell';
 import { platform } from '@tauri-apps/plugin-os';
 import { LazyStore } from '@tauri-apps/plugin-store';
 import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/plugin-notification';
+import { getVersion } from '@tauri-apps/api/app';
 
 import { Button } from './components/ui/button';
 import { Input } from './components/ui/input';
@@ -31,8 +32,10 @@ interface AppSettings {
   cropdThumbnails: boolean;
   embedMetadata: boolean;
   albumMode: boolean;
+  autoUpdate: boolean;
 }
 
+const appVersion = ref('')
 const SETTINGS_KEY = 'app-config';
 const store = new LazyStore('settings.json')
 const currentOS = platform()
@@ -63,7 +66,8 @@ const settings = reactive<AppSettings>({
   embedThumbnails: false,
   cropdThumbnails: false,
   embedMetadata: false,
-  albumMode: false
+  albumMode: false,
+  autoUpdate: true
 })
 
 const videoUrl = ref('');
@@ -112,6 +116,7 @@ watch(downloadLog, async () => {
 onMounted(async () => {
   try {
     await store.init();
+    appVersion.value = await getVersion()
 
     const saved = await store.get<AppSettings>(SETTINGS_KEY);
     const defaultPath = await homeDir();
@@ -125,10 +130,12 @@ onMounted(async () => {
     await nextTick();
     isInit.value = true;
 
-    addLog('[🚀] yt-dlpの更新を確認中...')
-    const updateCmd = Command.sidecar('binaries/yt-dlp', ['-U']);
-    updateCmd.stdout.on('data', (line) => addLog(`[UPDATE] ${line.trim()}`))
-    await updateCmd.spawn()
+    if (settings.autoUpdate) {
+      addLog('[🚀] yt-dlpの更新を確認中...')
+      const updateCmd = Command.sidecar('binaries/yt-dlp', ['-U']);
+      updateCmd.stdout.on('data', (line) => addLog(`[UPDATE] ${line.trim()}`))
+      await updateCmd.spawn()
+    }
   } catch (err) {
     console.error('ERROR: ', err)
   }
@@ -279,9 +286,10 @@ const downloadVideo = async () => {
 
     <!-- Tabs for Options and Logs -->
     <Tabs v-model="activeTab" class="flex-1 flex flex-col overflow-hidden">
-      <TabsList class="grid w-full grid-cols-2">
+      <TabsList class="grid w-full grid-cols-3">
         <TabsTrigger value="options">オプション</TabsTrigger>
         <TabsTrigger value="logs">ログ</TabsTrigger>
+        <TabsTrigger value="settings">設定</TabsTrigger>
       </TabsList>
 
       <TabsContent value="options" class="flex-1 overflow-y-auto mt-4 space-y-6 pr-2">
@@ -289,7 +297,7 @@ const downloadVideo = async () => {
         <section class="space-y-3">
           <div class="flex items-center gap-2 mb-1">
             <span class="material-icons text-sm">settings</span>
-            <h3 class="text-sm font-semibold text-muted-foreground">基本設定</h3>
+            <h3 class="text-sm font-semibold">基本設定</h3>
           </div>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-secondary/30 p-4 rounded-lg">
             <div class="space-y-2">
@@ -321,7 +329,7 @@ const downloadVideo = async () => {
         <section class="space-y-3">
           <div class="flex items-center gap-2 mb-1">
             <span class="material-icons text-sm">playlist_play</span>
-            <h3 class="text-sm font-semibold text-muted-foreground">プレイリスト・アルバム</h3>
+            <h3 class="text-sm font-semibold">プレイリスト・アルバム</h3>
           </div>
           <div class="grid grid-cols-1 gap-1 border rounded-lg divide-y">
             <div class="flex items-center justify-between p-3">
@@ -353,7 +361,7 @@ const downloadVideo = async () => {
         <section class="space-y-3">
           <div class="flex items-center gap-2 mb-1">
             <span class="material-icons text-sm">audio_file</span>
-            <h3 class="text-sm font-semibold text-muted-foreground">メタデータ・サムネイル</h3>
+            <h3 class="text-sm font-semibold">メタデータ・サムネイル</h3>
           </div>
           <div class="grid grid-cols-1 gap-1 border rounded-lg divide-y">
             <div class="flex items-center justify-between p-3">
@@ -380,6 +388,30 @@ const downloadVideo = async () => {
         <div class="w-full h-full overflow-y-auto border border-gray-200 rounded p-2 bg-slate-50" ref="logArea">
           <p class="text-sm font-mono select-text!" v-for="log in downloadLog" :key="log">{{ log }}</p>
         </div>
+      </TabsContent>
+      <TabsContent value="settings" class="flex-1 overflow-y-auto mt-4 space-y-6 pr-2">
+        <section class="space-y-3">
+          <div class="flex items-center gap-2 mb-1">
+            <span class="material-icons text-sm">settings</span>
+            <h3 class="font-bold text-sm">基本設定</h3>
+          </div>
+          <div class="grid grid-cols-1 gap-1 border rounded-lg divide-y">
+            <div class="flex items-center justify-between p-3">
+              <Label for="autoUpdateSwitch" class="text-sm font-medium">起動時にyt-dlpを更新する</Label>
+              <Switch v-model="settings.autoUpdate" id="autoUpdateSwitch" />
+            </div>
+          </div>
+        </section>
+        <section class="space-y-3">
+          <div class="flex items-center gap-2 mb-1">
+            <h2 class="text-lg font-bold">About</h2>
+          </div>
+          <div class="flex flex-col items-start gap-1">
+            <p>バージョン: {{ appVersion }}</p>
+            <p>開発者: monuke-maho</p>
+            <a href="https://github.com/monuke-maho/syt" target="_blank" class="underline">GitHub</a>
+          </div>
+        </section>
       </TabsContent>
     </Tabs>
   </main>
