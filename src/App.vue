@@ -8,6 +8,7 @@ import { platform } from '@tauri-apps/plugin-os';
 import { LazyStore } from '@tauri-apps/plugin-store';
 import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/plugin-notification';
 import { getVersion } from '@tauri-apps/api/app';
+import { invoke } from '@tauri-apps/api/core';
 
 import { Button } from './components/ui/button';
 import { Input } from './components/ui/input';
@@ -16,6 +17,33 @@ import { Switch } from './components/ui/switch';
 import { Label } from './components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './components/ui/tabs';
+
+interface BrowserProfile {
+  browser_name: string;
+  profile_name: string;
+  root_directory: string;
+}
+
+const allProfiles = ref<BrowserProfile[]>([]);
+const errMsg = ref('');
+const fetchProfiles = async () => {
+  try {
+    const data = await invoke<BrowserProfile[]>('get_all_profiles');
+    allProfiles.value = data;
+  } catch (err) {
+    console.error(err);
+    errMsg.value = 'プロファイルの取得に失敗';
+  }
+}
+
+const browserList = computed<string[]>(() => {
+  const names = allProfiles.value.map(p => p.browser_name).filter(name => name !== '');
+  return [...new Set(names)]
+})
+
+const filteredProfiles = computed(() => {
+  return allProfiles.value.filter(p => p.browser_name === settings.selectedBrowser)
+})
 
 interface QualityItem {
   label: string;
@@ -26,6 +54,8 @@ interface AppSettings {
   savePath: string;
   selectedExt: string;
   selectedQuality: string;
+  selectedBrowser: string;
+  selectedProfile: string;
   playlistMode: boolean;
   namedIndex: boolean;
   embedThumbnails: boolean;
@@ -61,6 +91,8 @@ const settings = reactive<AppSettings>({
   savePath: '',
   selectedExt: 'mp4',
   selectedQuality: 'auto',
+  selectedBrowser: '',
+  selectedProfile: '',
   playlistMode: false,
   namedIndex: false,
   embedThumbnails: false,
@@ -81,9 +113,9 @@ const activeTab = ref('options');
 
 const qualityOptions = computed(() => {
   if (settings.selectedExt === 'mp3') {
-    return AUDIO_QUALITIES;
+    return AUDIO_QUALITIES.map(q => ({ ...q, stableKey: `audio-${q.value}` }));
   } else if (['mp4', 'mkv'].includes(settings.selectedExt)) {
-    return VIDEO_QUALITYS;
+    return VIDEO_QUALITYS.map(q => ({ ...q, stableKey: `video-${q.value}` }));
   } else {
     return [];
   }
@@ -112,23 +144,36 @@ watch(downloadLog, async () => {
   }
 }, { deep: true })
 
+watch(() => settings.selectedBrowser, (newVal) => {
+  if (newVal === 'none' || newVal === '') {
+    settings.selectedProfile = '';
+  }
+})
+
 // 起動時の処理
 onMounted(async () => {
   try {
+    fetchProfiles();
     await store.init();
     appVersion.value = await getVersion()
 
     const saved = await store.get<AppSettings>(SETTINGS_KEY);
     const defaultPath = await homeDir();
 
-    if (saved) {
-      Object.assign(settings, saved);
+    if (saved && typeof saved === 'object') {
+      if ('savePath' in saved) {
+        Object.assign(settings, saved);
+      } else {
+        settings.savePath = defaultPath;
+      }
     } else {
       settings.savePath = defaultPath;
     }
 
+    // すべての設定が反映された後に初期化完了とする
     await nextTick();
     isInit.value = true;
+    console.log('App Initialized');
 
     if (settings.autoUpdate) {
       addLog('[🚀] yt-dlpの更新を確認中...')
@@ -215,6 +260,9 @@ const downloadVideo = async () => {
     ytdlopts.push('-o', outputTemplate)
   }
 
+  if (settings.selectedBrowser && settings.selectedBrowser !== 'none' && settings.selectedProfile) {
+    ytdlopts.push("--cookies-from-browser", `${settings.selectedBrowser}:${settings.selectedProfile}`)
+  }
   ytdlopts.push(videoUrl.value)
 
   console.log('yt-dlp options:', ytdlopts)
@@ -317,9 +365,34 @@ const downloadVideo = async () => {
                 <SelectTrigger class="w-full bg-background">
                   <SelectValue placeholder="選択" />
                 </SelectTrigger>
-                <SelectContent>
-                  <SelectItem v-for="quality in qualityOptions" :value="quality.value" :key="quality.value">{{
+                <SelectContent v-if="isInit">
+                  <SelectItem v-for="quality in qualityOptions" :value="quality.value" :key="quality.stableKey">{{
                     quality.label }}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div class="space-y-2">
+              <Label>ブラウザー</Label>
+              <Select v-model="settings.selectedBrowser">
+                <SelectTrigger class="w-full bg-background">
+                  <SelectValue placeholder="選択" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">使用しない</SelectItem>
+                  <SelectItem v-for="name in browserList" :value="name" :key="name">{{ name }}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div class="space-y-2">
+              <Label>プロファイル</Label>
+              <Select v-model="settings.selectedProfile"
+                :disabled="settings.selectedBrowser === 'none' || settings.selectedBrowser === ''">
+                <SelectTrigger class="w-full bg-background">
+                  <SelectValue placeholder="選択" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem v-for="p in filteredProfiles" :value="p.root_directory" :key="p.root_directory">{{
+                    p.profile_name }}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -386,7 +459,7 @@ const downloadVideo = async () => {
       <!-- Logs Tab -->
       <TabsContent value="logs" class="flex-1 overflow-hidden mt-4">
         <div class="w-full h-full overflow-y-auto border border-gray-200 rounded p-2 bg-slate-50" ref="logArea">
-          <p class="text-sm font-mono select-text!" v-for="log in downloadLog" :key="log">{{ log }}</p>
+          <p class="text-sm font-mono select-text!" v-for="(log, idx) in downloadLog" :key="idx">{{ log }}</p>
         </div>
       </TabsContent>
       <TabsContent value="settings" class="flex-1 overflow-y-auto mt-4 space-y-6 pr-2">
