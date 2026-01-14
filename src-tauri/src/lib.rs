@@ -35,7 +35,7 @@ fn get_all_profiles() -> Vec<BrowserProfile> {
     all_profiles
 }
 
-fn get_base_dir(win: &str, mac: &str, lin: &str) -> Option<PathBuf> {
+fn get_base_dir(win: &str, _mac: &str, _lin: &str) -> Option<PathBuf> {
     #[cfg(target_os = "windows")]
     {
         std::env::var("APPDATA")
@@ -136,6 +136,8 @@ fn greet(name: &str) -> String {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_store::Builder::new().build())

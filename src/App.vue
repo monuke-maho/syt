@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // import
 import { ref, reactive, onMounted, nextTick, watch, computed } from 'vue';
-import { open } from '@tauri-apps/plugin-dialog';
+import { open,confirm } from '@tauri-apps/plugin-dialog';
 import { homeDir } from '@tauri-apps/api/path';
 import { Command } from '@tauri-apps/plugin-shell';
 import { platform } from '@tauri-apps/plugin-os';
@@ -9,6 +9,8 @@ import { LazyStore } from '@tauri-apps/plugin-store';
 import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/plugin-notification';
 import { getVersion } from '@tauri-apps/api/app';
 import { invoke } from '@tauri-apps/api/core';
+import { check } from '@tauri-apps/plugin-updater';
+import { relaunch } from '@tauri-apps/plugin-process';
 
 import { Button } from './components/ui/button';
 import { Input } from './components/ui/input';
@@ -180,6 +182,16 @@ onMounted(async () => {
       const updateCmd = Command.sidecar('binaries/yt-dlp', ['-U']);
       updateCmd.stdout.on('data', (line) => addLog(`[UPDATE] ${line.trim()}`))
       await updateCmd.spawn()
+    }
+    const update = await check();
+    if (update) {
+      addLog(`[👀] 更新が見つかりました!`)
+      const confirmUpdate = await confirm('更新が見つかりました。更新しますか?', { title: "確認", kind: "info" })
+      if (confirmUpdate) {
+        addLog('[⬇️] 更新しています...')
+        await update.downloadAndInstall()
+        await relaunch()
+      }
     }
   } catch (err) {
     console.error('ERROR: ', err)
@@ -470,7 +482,7 @@ const downloadVideo = async () => {
           </div>
           <div class="grid grid-cols-1 gap-1 border rounded-lg divide-y">
             <div class="flex items-center justify-between p-3">
-              <Label for="autoUpdateSwitch" class="text-sm font-medium">起動時にyt-dlpを更新する</Label>
+              <Label for="autoUpdateSwitch" class="text-sm font-medium">起動時に更新を確認する</Label>
               <Switch v-model="settings.autoUpdate" id="autoUpdateSwitch" />
             </div>
           </div>
