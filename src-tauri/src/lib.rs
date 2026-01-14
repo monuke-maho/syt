@@ -35,7 +35,7 @@ fn get_all_profiles() -> Vec<BrowserProfile> {
     all_profiles
 }
 
-fn get_base_dir(win: &str, _mac: &str, _lin: &str) -> Option<PathBuf> {
+fn get_base_dir(win: &str, mac: &str, lin: &str) -> Option<PathBuf> {
     #[cfg(target_os = "windows")]
     {
         std::env::var("APPDATA")
