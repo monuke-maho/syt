@@ -185,15 +185,24 @@ onMounted(async () => {
       updateCmd.stdout.on('data', (line) => addLog(`[UPDATE] ${line.trim()}`))
       await updateCmd.spawn()
     }
-    const update = await check();
-    if (update) {
-      addLog(`[👀] 更新が見つかりました!`)
-      const confirmUpdate = await confirm('更新が見つかりました。更新しますか?', { title: "確認", kind: "info" })
-      if (confirmUpdate) {
-        addLog('[⬇️] 更新しています...')
-        await update.downloadAndInstall()
-        await relaunch()
+    
+    addLog('[🔄] アプリの更新を確認中...')
+    try {
+      const update = await check();
+      if (update) {
+        addLog(`[👀] 更新が見つかりました! バージョン: ${update.version}`)
+        const confirmUpdate = await confirm(`更新が見つかりました(v${update.version})。更新しますか?`, { title: "確認", kind: "info" })
+        if (confirmUpdate) {
+            addLog('[⬇️] 更新しています...')
+            await update.downloadAndInstall()
+            await relaunch()
+        }
+      } else {
+        addLog('[✅] 最新バージョンです')
       }
+    } catch (err) {
+      addLog(`[❌] 更新確認エラー: ${err}`)
+      console.error('Update check error:', err)
     }
   } catch (err) {
     console.error('ERROR: ', err)
