@@ -58,6 +58,7 @@ interface AppSettings {
   selectedQuality: string;
   selectedBrowser: string;
   selectedProfile: string;
+  customPath: string;
   playlistMode: boolean;
   namedIndex: boolean;
   embedThumbnails: boolean;
@@ -95,6 +96,7 @@ const settings = reactive<AppSettings>({
   selectedQuality: 'auto',
   selectedBrowser: '',
   selectedProfile: '',
+  customPath: '',
   playlistMode: false,
   namedIndex: false,
   embedThumbnails: false,
@@ -273,7 +275,11 @@ const downloadVideo = async () => {
   }
 
   if (settings.selectedBrowser && settings.selectedBrowser !== 'none' && settings.selectedProfile) {
-    ytdlopts.push("--cookies-from-browser", `${settings.selectedBrowser}:${settings.selectedProfile}`)
+    if (settings.customPath && settings.selectedProfile === 'custom') {
+      ytdlopts.push("--cookies-from-browser", `firefox:${settings.customPath}`)
+    } else {
+      ytdlopts.push("--cookies-from-browser", `firefox:${settings.selectedProfile}`)
+    }
   }
   ytdlopts.push(videoUrl.value)
 
@@ -405,8 +411,13 @@ const downloadVideo = async () => {
                 <SelectContent>
                   <SelectItem v-for="p in filteredProfiles" :value="p.root_directory" :key="p.root_directory">{{
                     p.profile_name }}</SelectItem>
+                  <SelectItem value="custom">パスを手動入力</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+            <div class="space-y-2 col-span-2" v-if="settings.selectedProfile === 'custom'">
+              <Label for="customPath">プロファイルパス</Label>
+              <Input v-model="settings.customPath" type="text" id="customPath" />
             </div>
           </div>
         </section>
