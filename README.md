@@ -20,6 +20,9 @@ macOSでも開発・確認を行ってはいますが、すべての機能が動
 
 ### 依存関係
 
+> [!CAUTION]
+> **絶対に**インストールしてください！！
+
 - **ffmpeg**  
   `yt-dlp`は動画を変換・統合する際に`ffmpeg`を使用します。
   Windowsの場合は以下のコマンドでインストールが可能です。
@@ -29,6 +32,14 @@ macOSでも開発・確認を行ってはいますが、すべての機能が動
   macOSの場合はhomebrewを使用してインストールが可能です。
   ```shell
   brew install ffmpeg
+  ```
+
+- **Deno**  
+  `yt-dlp`は処理の一部に`Deno`を使用します。  
+  [公式サイト](https://deno.com)を参考にインストールしてください。  
+  macOSの場合はhomebrewを使用してインストールが可能です。
+  ```shell
+  brew install deno
   ```
 
 ## 開発環境
