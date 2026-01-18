@@ -21,8 +21,16 @@ jobs:
         include:
           - platform: 'windows-latest'
             args: ''
+            denoUrl: 'https://github.com/denoland/deno/releases/latest/download/deno-x86_64-pc-windows-msvc.zip'
+            ytdlpUrl: 'https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/latest/download/yt-dlp.exe'
+            denoName: 'deno-x86_64-pc-windows-msvc.exe'
+            ytdlpName: 'yt-dlp-x86_64-pc-windows-msvc.exe'
           - platform: 'macos-latest'
             args: '--target aarch64-apple-darwin'
+            denoUrl: 'https://github.com/denoland/deno/releases/latest/download/deno-aarch64-apple-darwin.zip'
+            ytdlpUrl: 'https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/latest/download/yt-dlp_macos'
+            denoName: 'deno-aarch64-apple-darwin'
+            ytdlpName: 'yt-dlp-aarch64-apple-darwin'
     runs-on: ${{ matrix.platform }}
     steps:
       - name: Checkout
@@ -47,6 +55,29 @@ jobs:
         run: |
           bun install
       
+      - name: download deno
+        shell: bash
+        run: |
+          mkdir -p src-tauri/binaries
+          curl -fsSL ${{ matrix.denoUrl }} -o deno.zip
+          unzip deno.zip
+          mv deno src-tauri/binaries/${{ matrix.denoName }}
+      
+      - name: download yt-dlp
+        shell: bash
+        run: |
+          mkdir -p src-tauri/binaries
+          curl -fsSL ${{ matrix.ytdlpUrl }} -o ytdlp
+          mv ytdlp src-tauri/binaries/${{ matrix.ytdlpName }}
+      
+      - name: permission
+        if: ${{ matrix.platform == 'macos-latest' }}
+        run: |
+          chmod +x src-tauri/binaries/${{ matrix.denoName }}
+          chmod +x src-tauri/binaries/${{ matrix.ytdlpName }}
+          xattr -d com.apple.quarantine src-tauri/binaries/${{ matrix.denoName }}
+          xattr -d com.apple.quarantine src-tauri/binaries/${{ matrix.ytdlpName }}
+
       - name: build
         uses: tauri-apps/tauri-action@v0
         env:
