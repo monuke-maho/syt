@@ -2,7 +2,7 @@
 // import
 import { ref, reactive, onMounted, nextTick, watch, computed } from 'vue';
 import { open,confirm } from '@tauri-apps/plugin-dialog';
-import { homeDir } from '@tauri-apps/api/path';
+import { homeDir,join } from '@tauri-apps/api/path';
 import { Command } from '@tauri-apps/plugin-shell';
 import { platform } from '@tauri-apps/plugin-os';
 import { LazyStore } from '@tauri-apps/plugin-store';
@@ -72,6 +72,7 @@ const appVersion = ref('')
 const SETTINGS_KEY = 'app-config';
 const store = new LazyStore('settings.json')
 const currentOS = platform()
+const denoPath = ref('')
 
 const EXTS = ['mp4', 'mkv', 'mp3', 'flac', 'wav']
 const VIDEO_QUALITYS: QualityItem[] = [
@@ -163,6 +164,7 @@ onMounted(async () => {
 
     const saved = await store.get<AppSettings>(SETTINGS_KEY);
     const defaultPath = await homeDir();
+    denoPath.value = await join(defaultPath,'.deno','bin')
 
     if (saved && typeof saved === 'object') {
       if ('savePath' in saved) {
@@ -236,8 +238,8 @@ const downloadVideo = async () => {
 
   const isAudio = ['mp3', 'flac', 'wav'].includes(settings.selectedExt);
   const encoding = currentOS === 'windows' ? 'shift_jis' : 'utf-8';
-  const env: Record<string, string> = currentOS === 'macos' ? { PATH: '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/usr/sbin:/sbin' } : {}
-  const ytdlopts = ['--newline', '--no-color', '--progress-template', '[DOWNLOADING]::%(progress._percent)s::%(info.title)s']
+  const env: Record<string, string> = currentOS === 'macos' ? { PATH: `/opt/homebrew/bin:/usr/local/bin:/usr/bin:/usr/sbin:/sbin:${denoPath.value}` } : {}
+  const ytdlopts = ['--newline', '--no-color', '--progress-template', '[DOWNLOADING]::%(progress._percent)s::%(info.title)s','--remote-components','ejs:npm']
 
   if (settings.albumMode && isAudio) {
     ytdlopts.push('-f', 'bestaudio/best', '-x', '--audio-format', settings.selectedExt);
