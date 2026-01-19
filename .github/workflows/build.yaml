@@ -23,6 +23,10 @@ jobs:
             args: ''
             ytdlpUrl: 'https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/latest/download/yt-dlp.exe'
             ytdlpName: 'yt-dlp-x86_64-pc-windows-msvc.exe'
+          - platform: 'ubuntu-latest'
+            args: ''
+            ytdlpUrl: 'https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/latest/download/yt-dlp'
+            ytdlpName: 'yt-dlp-x86_64-unknown-linux-gnu'
           - platform: 'macos-latest'
             args: '--target aarch64-apple-darwin'
             ytdlpUrl: 'https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/latest/download/yt-dlp_macos'
@@ -46,6 +50,12 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin' || '' }}
+      
+      - name: install dependencies (ubuntu)
+        if: matrix.platform == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
       
       - name: install dependencies
         run: |

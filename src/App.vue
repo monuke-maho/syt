@@ -238,7 +238,7 @@ const downloadVideo = async () => {
 
   const isAudio = ['mp3', 'flac', 'wav'].includes(settings.selectedExt);
   const encoding = currentOS === 'windows' ? 'shift_jis' : 'utf-8';
-  const env: Record<string, string> = currentOS === 'macos' ? { PATH: `/opt/homebrew/bin:/usr/local/bin:/usr/bin:/usr/sbin:/sbin:${denoPath.value}` } : {}
+  const env: Record<string, string> = currentOS === 'macos' || currentOS === 'linux' ? { PATH: `/opt/homebrew/bin:/usr/local/bin:/usr/bin:/usr/sbin:/sbin:${denoPath.value}` } : {}
   const ytdlopts = ['--newline', '--no-color', '--progress-template', '[DOWNLOADING]::%(progress._percent)s::%(info.title)s','--remote-components','ejs:npm']
 
   if (settings.albumMode && isAudio) {
