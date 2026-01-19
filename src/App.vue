@@ -253,7 +253,7 @@ const downloadVideo = async () => {
     if (settings.selectedExt !== 'wav') {
       ytdlopts.push('--embed-thumbnail', "--convert-thumbnails", "jpg", "--ppa", "ThumbnailsConvertor:-qmin 1 -q:v 1 -vf crop=\"'if(gt(ih,iw),iw,ih)':'if(gt(iw,ih),ih,iw)'\"")
     }
-    ytdlopts.push('--add-metadata', '--parse-metadata', '%(playlist_index)s/%(n_entries)s:%(track_number)s', '--parse-metadata', '%(upload_date).4s:&(meta_date)s', '--parse-metadata', '%(creators.0)s:%(meta_artist)s')
+    ytdlopts.push('--add-metadata', '--parse-metadata', '%(playlist_index)s/%(n_entries)s:%(track_number)s', '--parse-metadata', '%(release_date).4s:%(meta_date)s', '--parse-metadata', '%(creators.0)s:%(meta_album_artist)s')
   } else {
     // 処理
     if (!isAudio) {
