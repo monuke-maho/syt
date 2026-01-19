@@ -69,7 +69,7 @@ jobs:
           mv ytdlp src-tauri/binaries/${{ matrix.ytdlpName }}
       
       - name: permission
-        if: ${{ matrix.platform == 'macos-latest' }}
+        if: ${{ matrix.platform == 'macos-latest' || matrix.platform == 'ubuntu-latest' }}
         run: |
           chmod +x src-tauri/binaries/${{ matrix.ytdlpName }}
           xattr -d com.apple.quarantine src-tauri/binaries/${{ matrix.ytdlpName }} || true
