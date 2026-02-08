@@ -109,6 +109,7 @@ const settings = reactive<AppSettings>({
 
 const videoUrl = ref('');
 const downloading = ref(false);
+const updating = ref(false);
 const downloadProgress = ref<number | null>(0);
 const status = ref('ステータス');
 const downloadLog = ref<string[]>([]);
@@ -185,7 +186,12 @@ onMounted(async () => {
       addLog('[🚀] yt-dlpの更新を確認中...')
       const updateCmd = Command.sidecar('binaries/yt-dlp', ['-U']);
       updateCmd.stdout.on('data', (line) => addLog(`[UPDATE] ${line.trim()}`))
+      updating.value = true
       await updateCmd.spawn()
+      updateCmd.on('close', () => {
+        updating.value = false
+        addLog('[🚀] 更新処理が完了しました!')
+      })
     }
     
     addLog('[🔄] アプリの更新を確認中...')
@@ -342,7 +348,7 @@ const downloadVideo = async () => {
     <!-- URL Input -->
     <div class="flex flex-row items-center w-full gap-2">
       <Input v-model="videoUrl" type="text" placeholder="URLを入力..." />
-      <Button :disabled="downloading" @click="downloadVideo"><span class="material-icons">{{ downloading ?
+      <Button :disabled="downloading || updating" @click="downloadVideo"><span class="material-icons">{{ downloading ?
         'downloading'
         : 'download' }}</span>{{ downloading ? 'ダウンロード中' : 'ダウンロード' }}</Button>
     </div>
@@ -504,7 +510,7 @@ const downloadVideo = async () => {
           </div>
           <div class="grid grid-cols-1 gap-1 border rounded-lg divide-y">
             <div class="flex items-center justify-between p-3">
-              <Label for="autoUpdateSwitch" class="text-sm font-medium">起動時に更新を確認する</Label>
+              <Label for="autoUpdateSwitch" class="text-sm font-medium">起動時にyt-dlpを更新する</Label>
               <Switch v-model="settings.autoUpdate" id="autoUpdateSwitch" />
             </div>
           </div>
